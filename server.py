@@ -3,6 +3,9 @@ import alsaaudio
 import subprocess
 import flask 
 import webbrowser 
+import validictory
+import tkMessageBox
+import wx
 from alsaaudio import Mixer
 from subprocess import call 
 from flask import Flask
@@ -32,7 +35,14 @@ def open_url():
 	
 	if request.json is None: 
 		return flask.jsonify(error='Invalid JSON request')
-	 
+
+	schema = {
+		'type': 'object', 
+		'properties': {
+			'value': {'type':'string'}
+		}
+	}	
+	validictory.validate(request.json, schema) 
 	url = request.json['value']
 	
 	webbrowser.open_new_tab(url)
@@ -46,7 +56,7 @@ def open_url():
 @app.route('/volume', methods=['GET', 'POST'])
 def volume(): 
 	app.logger.debug('Volume Request ')
-	app.logger.debug(request.json)
+	#app.logger.debug(request.json)
 	
 	# GET the current volume 
 	if 'GET' == request.method: 
@@ -57,16 +67,20 @@ def volume():
 		if request.json is None: 
 			return flask.jsonify(error='Invalid JSON Request')
 
+		schema = {
+			'type': 'object', 
+			'properties': {
+				'value': {'type': 'integer', 'minimum': 0, 'maximun': 100 },
+				'action': {'type': 'string', 'enum': ['set', 'increase', 'decrease']}
+			}
+		}
+
+		validictory.validate(request.json, schema)
+
 		value = request.json['value']
-		action = request.json['action'] # one of 'set' 'increase' 'decrease' 
+		action = request.json['action']  
 
-		if value < 0 or value > 100: 
-			return flask.jsonify(error='Volume is not in range of 0 - 100')
-
-		if action not in ['set', 'increase', 'decrease']:
-			return flask.jsonify(error='action invalid')
-		
-		if action in ['increase', 'decrease']: 
+		if action == 'increase' or action == 'decrease': 
 			current_volume = get_volume()
 			app.logger.info('Current Volume is ' + str(current_volume))
 
@@ -81,6 +95,31 @@ def volume():
 
 		set_volume(value)
 		return flask.jsonify(success='Volume set to ' + str(value) + '%')
+
+
+
+@app.route('/notify', methods=['POST'])
+def notify():
+	app.logger.debug('Notify Request')
+	
+	if request.json is None: 
+		return flask.jsonify(error='Invalid JSON Request')
+		
+	schema = {
+		'type': 'object', 
+		'properties': {
+			'value': {'type': 'string'}
+		}				
+	}
+	validictory.validate(request.json, schema)
+
+	gui = wx.PySimpleApp()
+	dialog = wx.MessageDialog(None, request.json['value'], 'Notification', wx.OK|wx.ICON_INFORMATION)
+	dialog.ShowModal()
+	dialog.Destroy()
+	gui.MainLoop()	
+	#tkMessageBox.showinfo(request.json['value'])	
+	return flask.jsonify(success='Message displayed')
 
 
 def get_volume():
